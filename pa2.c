@@ -140,7 +140,7 @@ A_input(packet)
   //verify incoming packet checksum
   if(calculate_checksum(packet.seqnum,packet.acknum,&packet.payload) == packet.checksum){
     for(int i =0; i < WINDOW_SIZE; i++){
-      if(packet.acknum == window[i].acknum){
+      if(packet.acknum == A_window[i].acknum){
         A_window_acks[i] = 1;
 
       }
@@ -163,7 +163,7 @@ A_input(packet)
       A_window[j] = A_window[i];
       A_window_acks[j] = A_window_acks[i];
       A_window_sent[j] = A_window_sent[i];
-      j++
+      j++;
     }
     A_next_window_index -= leftmost_unacked;
   }
@@ -218,7 +218,7 @@ B_input (packet)
      B_curr_seqno++;
      B_next_window_index++;
 
-     B_window_sent[i] = 1; //mark packet as sent
+     //B_window_sent[i] = 1; //mark packet as sent
      tolayer3(B,ack_packet);
      B_window_available = (WINDOW_SIZE > B_next_window_index ? 1 : 0 );
    }
