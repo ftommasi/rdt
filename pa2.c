@@ -155,10 +155,10 @@ A_input(packet)
   struct pkt packet;
 {
 
+    int i;
   printf("A IN IS BEING CALLED\n");
   //verify incoming packet checksum
   if(calculate_checksum(packet.seqnum,packet.acknum,&packet.payload) == packet.checksum){
-    int i;
     for(i =0; i < WINDOW_SIZE; i++){
       if(packet.acknum == A_window[i].acknum){
         A_window_acks[i] = 1;
@@ -168,7 +168,7 @@ A_input(packet)
   }
   
   int leftmost_unacked;
-  for( i=0; i < WINDOW_SIZE; i++){
+  for(i=0; i < WINDOW_SIZE; i++){
     if(!A_window_acks[i]){
       leftmost_unacked = i;
       break;
