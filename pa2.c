@@ -41,10 +41,12 @@ struct pkt {
   
   
   ---------------------------------------------------------------------------*/
-struct packet window[WINDOW_SIZE];
+struct pkt* window;
 int curr_seqno ;
 int next_window_index;
 char window_available;
+int curr_acknum;
+
 /* Please use the following values in your program */
 
 #define   A    0
@@ -96,12 +98,14 @@ A_output (message)
 {
    
    if(window_available){
+    curr_acknum +=  20;
+    
     struct pkt packet;
-    pkt.seqnum = curr_seqno;
-    pkt.acknum = curr_seqno*20+1; //this probably needs to be differned than seqno
-    memcpy(&message.data,&pkt.payload,20); //copy message data into packte
-    pkt.checksum = calculateChecksum(pkt.seqnum,pkt.acknum,&pkt.payload);
-    window[next_window_index] = pkt;
+    packet.seqnum = curr_seqno;
+    packet.acknum = curr_acknum; //this probably needs to be differned than seqno
+    memcpy(&message.data,&packet.payload,20); //copy message data into packte
+    packet.checksum = calculate_checksum(packet.seqnum,packet.acknum,&packet.payload);
+    window[next_window_index] = packet;
     curr_seqno++;
     next_window_index++;
    }
@@ -128,9 +132,11 @@ A_timerinterrupt (void)
 void
 A_init (void)
 {
+  window = (struct pkt*) malloc(WINDOW_SIZE * sizeof(struct pkt));
   curr_seqno = FIRST_SEQNO;
   next_window_index = 0;
   window_available = 1;
+  curr_acknum = FIRST_SEQNO;
 } 
 
 /* called from layer 3, when a packet arrives for layer 4 at B*/
