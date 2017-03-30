@@ -98,7 +98,7 @@ A_output (message)
    if(window_available){
     struct pkt packet;
     pkt.seqnum = curr_seqno;
-    pkt.acknum = curr_seqno; //this probably needs to be differned than seqno
+    pkt.acknum = curr_seqno*20+1; //this probably needs to be differned than seqno
     memcpy(&message.data,&pkt.payload,20); //copy message data into packte
     pkt.checksum = calculateChecksum(pkt.seqnum,pkt.acknum,&pkt.payload);
     window[next_window_index] = pkt;
