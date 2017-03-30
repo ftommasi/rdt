@@ -41,11 +41,22 @@ struct pkt {
   
   
   ---------------------------------------------------------------------------*/
-struct pkt* window;
-int curr_seqno ;
-int next_window_index;
-char window_available;
-int curr_acknum;
+
+//C doesn't support bool so use char for least space
+#define bool char 
+
+struct pkt* A_window;
+struct pkt* B_window;
+bool* A_window_acks;
+bool* B_window_acks;
+int A_curr_seqno ;
+int B_curr_seqno ;
+int A_next_window_index;
+int B_next_window_index;
+bool A_window_available;
+bool B_window_available;
+int A_curr_acknum;
+int B_curr_acknum;
 
 /* Please use the following values in your program */
 
@@ -79,7 +90,7 @@ calculate_checksum(int seqnum, int acknum, char* payload)
 
 {
   //TODO verify 
-  int checksum_result = seqnum+acknum;
+  int checksum_result = seqnum + acknum;
   for(int i=0; i < 20; i++){
     checksum_result+= (int)payload[i];
   }
@@ -97,18 +108,19 @@ A_output (message)
     struct msg message;
 {
    
-   if(window_available){
-    curr_acknum +=  20;
+   if(A_window_available){
+    A_curr_acknum +=  20;
     
     struct pkt packet;
-    packet.seqnum = curr_seqno;
-    packet.acknum = curr_acknum; //this probably needs to be differned than seqno
+    packet.seqnum = A_curr_seqno;
+    packet.acknum = A_curr_acknum; //this probably needs to be differned than seqno
     memcpy(&message.data,&packet.payload,20); //copy message data into packte
     packet.checksum = calculate_checksum(packet.seqnum,packet.acknum,&packet.payload);
-    window[next_window_index] = packet;
-    curr_seqno++;
-    next_window_index++;
+    A_window[A_next_window_index] = packet;
+    A_curr_seqno++;
+    A_next_window_index++;
    }
+
 
 }
 
@@ -117,7 +129,11 @@ void
 A_input(packet)
   struct pkt packet;
 {	
-
+   for(int i=0; i< WINDOW_SIZE; i++){
+     if(!A_window_acks[i]){
+      tolayer3(B,A_window[i]);
+     }
+   }
 }
 
 /* called when A's timer goes off */
@@ -132,11 +148,12 @@ A_timerinterrupt (void)
 void
 A_init (void)
 {
-  window = (struct pkt*) malloc(WINDOW_SIZE * sizeof(struct pkt));
-  curr_seqno = FIRST_SEQNO;
-  next_window_index = 0;
-  window_available = 1;
-  curr_acknum = FIRST_SEQNO;
+  A_window = (struct pkt*) malloc(WINDOW_SIZE * sizeof(struct pkt));
+  A_window_acks = (bool*) malloc(WINDOW_SIZE * sizeof(bool));
+  A_curr_seqno = FIRST_SEQNO;
+  A_next_window_index = 0;
+  A_window_available = 1;
+  A_curr_acknum = FIRST_SEQNO;
 } 
 
 /* called from layer 3, when a packet arrives for layer 4 at B*/
@@ -144,7 +161,11 @@ void
 B_input (packet)
     struct pkt packet;
 {
+ if(B_window_available){
+  
+ }
 
+   tolayer3(A,packet);
 }
 
 
@@ -153,7 +174,12 @@ B_input (packet)
 void
 B_init (void)
 {
-
+  B_window = (struct pkt*) malloc(WINDOW_SIZE * sizeof(struct pkt));
+  B_window_acks = (bool*) malloc(WINDOW_SIZE * sizeof(bool));
+  B_curr_seqno = FIRST_SEQNO;
+  B_next_window_index = 0;
+  B_window_available = 1;
+  B_curr_acknum = FIRST_SEQNO;
 } 
 
 /* called at end of simulation to print final statistics */
