@@ -47,14 +47,21 @@ struct pkt {
 
 struct pkt* A_window;
 struct pkt* B_window;
+
 bool* A_window_acks;
 bool* B_window_acks;
+
+bool* A_window_sent;
+bool* B_window_sent;
+
+bool A_window_available;
+bool B_window_available;
+
 int A_curr_seqno ;
 int B_curr_seqno ;
 int A_next_window_index;
 int B_next_window_index;
-bool A_window_available;
-bool B_window_available;
+
 int A_curr_acknum;
 int B_curr_acknum;
 
@@ -119,6 +126,7 @@ A_output (message)
     A_window[A_next_window_index] = packet;
     A_curr_seqno++;
     A_next_window_index++;
+    A_window_available = (WINDOW_SIZE > A_next_window_index ? 1 : 0 );
    }
 
 
@@ -128,12 +136,46 @@ A_output (message)
 void
 A_input(packet)
   struct pkt packet;
-{	
-   for(int i=0; i< WINDOW_SIZE; i++){
-     if(!A_window_acks[i]){
-      tolayer3(B,A_window[i]);
-     }
-   }
+{
+  //verify incoming packet checksum
+  if(calculate_checksum(packet.seqnum,packet.acknum,&packet.payload) == packet.checksum){
+    for(int i =0; i < WINDOW_SIZE; i++){
+      if(packet.acknum == window[i].acknum){
+        A_window_acks[i] = 1;
+
+      }
+    }
+  }
+  
+  int leftmost_unacked;
+  for(int i=0; i < WINDOW_SIZE; i++){
+    if(!A_window_acks[i]){
+      leftmost_unacked = i;
+      break;
+    }
+  }
+
+  if(A_window_acks[0]){
+    //slide window
+    //A_window += leftmost_unacked;
+    int j = 0 ;
+    for(int i=leftmost_unacked; i < WINDOW_SIZE; i++){
+      A_window[j] = A_window[i];
+      A_window_acks[j] = A_window_acks[i];
+      A_window_sent[j] = A_window_sent[i];
+      j++
+    }
+    A_next_window_index -= leftmost_unacked;
+  }
+  
+  for(int i=0; i< WINDOW_SIZE; i++){
+      //make sure we aren't sending packets twice or packets that have already been received
+      if(!A_window_acks[i] && !A_window_sent[i]){
+        A_window_sent[i] = 1; //mark packet as sent
+        tolayer3(A,A_window[i]);
+      }
+
+  }
 }
 
 /* called when A's timer goes off */
@@ -150,6 +192,8 @@ A_init (void)
 {
   A_window = (struct pkt*) malloc(WINDOW_SIZE * sizeof(struct pkt));
   A_window_acks = (bool*) malloc(WINDOW_SIZE * sizeof(bool));
+  A_window_sent = (bool*) malloc(WINDOW_SIZE * sizeof(bool));
+  
   A_curr_seqno = FIRST_SEQNO;
   A_next_window_index = 0;
   A_window_available = 1;
@@ -161,11 +205,27 @@ void
 B_input (packet)
     struct pkt packet;
 {
+ struct pkt ack_packet;
  if(B_window_available){
-  
+   //store incoming packet on B window 
+   B_window[B_next_window_index] = packet;
+   //verify incoming packet checksum
+   if(calculate_checksum(packet.seqnum,packet.acknum,&packet.payload) == packet.checksum){ 
+     ack_packet.seqnum = B_curr_seqno;
+     ack_packet.acknum = packet.acknum; 
+     memcpy(0,ack_packet.payload,20); //what should the payload be for an ack packet
+     ack_packet.checksum = calculate_checksum(ack_packet.seqnum, ack_packet.acknum, &ack_packet.payload);
+     B_curr_seqno++;
+     B_next_window_index++;
+
+     B_window_sent[i] = 1; //mark packet as sent
+     tolayer3(B,ack_packet);
+     B_window_available = (WINDOW_SIZE > B_next_window_index ? 1 : 0 );
+   }
+
  }
 
-   tolayer3(A,packet);
+   
 }
 
 
@@ -176,6 +236,8 @@ B_init (void)
 {
   B_window = (struct pkt*) malloc(WINDOW_SIZE * sizeof(struct pkt));
   B_window_acks = (bool*) malloc(WINDOW_SIZE * sizeof(bool));
+  B_window_sent = (bool*) malloc(WINDOW_SIZE * sizeof(bool));
+  
   B_curr_seqno = FIRST_SEQNO;
   B_next_window_index = 0;
   B_window_available = 1;
