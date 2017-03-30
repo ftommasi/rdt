@@ -30,9 +30,9 @@ struct msg {
 /* 3 (teachers code).  Note the pre-defined packet structure, which all   */
 /* students must follow. */
 struct pkt {
-   int seqnum;
-   int acknum;
-   int checksum;
+   int  seqnum;
+   int  acknum;
+   int  checksum;
    char payload[20];
 };
 
@@ -98,12 +98,24 @@ calculate_checksum(int seqnum, int acknum, char* payload)
 {
   //TODO verify 
   int checksum_result = seqnum + acknum;
-  for(int i=0; i < 20; i++){
-    checksum_result+= (int)payload[i];
+  if(payload){ 
+    int i;
+    for(i=0; i < 20; i++){
+      checksum_result+= (int)payload[i];
+    }
   }
+
   return checksum_result;
 }
 
+
+void
+dump_packet(packet)
+struct pkt packet;
+{
+  printf("%d,%d,%d,%s\n",packet.seqnum, packet.acknum, packet.checksum, packet.payload);
+
+}
 
 /********* STUDENTS WRITE THE NEXT SEVEN ROUTINES *********/
 
@@ -114,11 +126,13 @@ void
 A_output (message)
     struct msg message;
 {
+
+   struct pkt packet;
+   printf("A OUT IS BEING CALLED\n");
    
    if(A_window_available){
     A_curr_acknum +=  20;
     
-    struct pkt packet;
     packet.seqnum = A_curr_seqno;
     packet.acknum = A_curr_acknum; //this probably needs to be differned than seqno
     memcpy(&message.data,&packet.payload,20); //copy message data into packte
@@ -127,8 +141,11 @@ A_output (message)
     A_curr_seqno++;
     A_next_window_index++;
     A_window_available = (WINDOW_SIZE > A_next_window_index ? 1 : 0 );
+    printf("A is Sending: ");
+    dump_packet(packet); 
+    tolayer3(A,packet);
    }
-
+    
 
 }
 
@@ -137,9 +154,12 @@ void
 A_input(packet)
   struct pkt packet;
 {
+
+  printf("A IN IS BEING CALLED\n");
   //verify incoming packet checksum
   if(calculate_checksum(packet.seqnum,packet.acknum,&packet.payload) == packet.checksum){
-    for(int i =0; i < WINDOW_SIZE; i++){
+    int i;
+    for(i =0; i < WINDOW_SIZE; i++){
       if(packet.acknum == A_window[i].acknum){
         A_window_acks[i] = 1;
 
@@ -148,7 +168,7 @@ A_input(packet)
   }
   
   int leftmost_unacked;
-  for(int i=0; i < WINDOW_SIZE; i++){
+  for( i=0; i < WINDOW_SIZE; i++){
     if(!A_window_acks[i]){
       leftmost_unacked = i;
       break;
@@ -159,7 +179,7 @@ A_input(packet)
     //slide window
     //A_window += leftmost_unacked;
     int j = 0 ;
-    for(int i=leftmost_unacked; i < WINDOW_SIZE; i++){
+    for( i=leftmost_unacked; i < WINDOW_SIZE; i++){
       A_window[j] = A_window[i];
       A_window_acks[j] = A_window_acks[i];
       A_window_sent[j] = A_window_sent[i];
@@ -167,7 +187,7 @@ A_input(packet)
     }
     A_next_window_index -= leftmost_unacked;
   }
-  
+  /*
   for(int i=0; i< WINDOW_SIZE; i++){
       //make sure we aren't sending packets twice or packets that have already been received
       if(!A_window_acks[i] && !A_window_sent[i]){
@@ -176,6 +196,7 @@ A_input(packet)
       }
 
   }
+  */
 }
 
 /* called when A's timer goes off */
@@ -183,6 +204,7 @@ void
 A_timerinterrupt (void)
 {
   
+  printf("A TIMERINTERRUPT IS BEING CALLED\n");
 } 
 
 /* the following routine will be called once (only) before any other */
@@ -190,6 +212,8 @@ A_timerinterrupt (void)
 void
 A_init (void)
 {
+
+  printf("A INIT IS BEING CALLED\n");
   A_window = (struct pkt*) malloc(WINDOW_SIZE * sizeof(struct pkt));
   A_window_acks = (bool*) malloc(WINDOW_SIZE * sizeof(bool));
   A_window_sent = (bool*) malloc(WINDOW_SIZE * sizeof(bool));
@@ -205,6 +229,7 @@ void
 B_input (packet)
     struct pkt packet;
 {
+  printf("B IN IS BEING CALLED\n");
  struct pkt ack_packet;
  if(B_window_available){
    //store incoming packet on B window 
@@ -213,12 +238,15 @@ B_input (packet)
    if(calculate_checksum(packet.seqnum,packet.acknum,&packet.payload) == packet.checksum){ 
      ack_packet.seqnum = B_curr_seqno;
      ack_packet.acknum = packet.acknum; 
-     memcpy(0,ack_packet.payload,20); //what should the payload be for an ack packet
-     ack_packet.checksum = calculate_checksum(ack_packet.seqnum, ack_packet.acknum, &ack_packet.payload);
+     //memcpy(ack_packet.payload,0,20); //what should the payload be for an ack packet
+     ack_packet.checksum = calculate_checksum(ack_packet.seqnum, ack_packet.acknum, NULL);
      B_curr_seqno++;
      B_next_window_index++;
-
+     printf("B GOT: "); 
+     dump_packet(packet);
+     tolayer5(packet.payload);
      //B_window_sent[i] = 1; //mark packet as sent
+     
      tolayer3(B,ack_packet);
      B_window_available = (WINDOW_SIZE > B_next_window_index ? 1 : 0 );
    }
@@ -234,6 +262,8 @@ B_input (packet)
 void
 B_init (void)
 {
+  
+  printf("B INIT IS BEING CALLED\n");
   B_window = (struct pkt*) malloc(WINDOW_SIZE * sizeof(struct pkt));
   B_window_acks = (bool*) malloc(WINDOW_SIZE * sizeof(bool));
   B_window_sent = (bool*) malloc(WINDOW_SIZE * sizeof(bool));
@@ -248,6 +278,7 @@ B_init (void)
 void Simulation_done()
 {
 
+  printf("Simulation DONE  IS BEING CALLED\n");
 }
 
 /*****************************************************************
