@@ -132,19 +132,18 @@ A_output (message)
     struct msg message;
 {
   printf("A_out called\n");
+    struct pkt packet;
+    packet.seqnum = A_curr_seqno;         
+    packet.acknum = A_curr_acknum;
+    memcpy(packet.payload,message.data,20);
+    packet.checksum = calculate_checksum(packet.seqnum, packet.acknum, packet.payload);
 
-  struct pkt packet;
-  packet.seqnum = A_curr_seqno;         
-  packet.acknum = A_curr_acknum;
-  memcpy(packet.payload,message.data,20);
-  packet.checksum = calculate_checksum(packet.seqnum, packet.acknum, packet.payload);
+    A_curr_seqno ++;
+    A_curr_acknum+=20;
 
-  A_curr_seqno ++;
-  A_curr_acknum+=20;
-
-  A_window[A_next_window_index] = packet;
-  A_next_window_index++;
-
+    A_window[A_next_window_index] = packet;
+    A_next_window_index++;
+  
   if(A_read_to_send){
     printf("A sent: ");
     dump_packet(A_window[next_packet]);
@@ -164,6 +163,9 @@ A_input(packet)
   if(packet.acknum == in_travel.acknum){
     A_read_to_send = 1;
     next_packet++;
+  }else{
+    printf("received NAK\n");
+    tolayer3(A,A_window[next_packet]);
   } 
 }
 
@@ -199,9 +201,9 @@ B_input (packet)
     struct pkt packet;
 {
   printf("B_in called\n");
+  struct pkt ack_packet;
   if(packet.checksum == calculate_checksum(packet.seqnum, packet.acknum, packet.payload)){
     printf("B ACKED packet %s\n",packet.payload);
-    struct pkt ack_packet;
     ack_packet.seqnum = B_curr_seqno;         
     ack_packet.acknum = packet.acknum;
     //memcpy(ack_packet.payload,0,20);
@@ -211,6 +213,10 @@ B_input (packet)
     tolayer3(B,ack_packet);
     tolayer5(packet.payload); 
   }
+  else{
+      ack_packet.acknum = 0;
+      tolayer3(B,ack_packet);
+    }
 }
 
 /* the following rouytine will be called once (only) before any other */
