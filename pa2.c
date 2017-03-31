@@ -48,6 +48,10 @@ struct pkt {
 struct pkt* A_window;
 struct pkt* B_window;
 
+struct pkt in_travel;
+
+int next_packet;
+
 bool* A_window_acks;
 bool* B_window_acks;
 
@@ -56,6 +60,7 @@ bool* B_window_sent;
 
 bool A_window_available;
 bool B_window_available;
+bool A_read_to_send;
 
 int A_curr_seqno ;
 int B_curr_seqno ;
@@ -65,6 +70,7 @@ int B_next_window_index;
 int A_curr_acknum;
 int B_curr_acknum;
 
+int to_send;
 /* Please use the following values in your program */
 
 #define   A    0
@@ -96,7 +102,6 @@ int
 calculate_checksum(int seqnum, int acknum, char* payload)
 
 {
-  //TODO verify 
   int checksum_result = seqnum + acknum;
   if(payload){ 
     int i;
@@ -126,84 +131,46 @@ void
 A_output (message)
     struct msg message;
 {
+  printf("A_out called\n");
 
-   struct pkt packet;
-   printf("A OUT IS BEING CALLED\n");
-   
-   if(A_window_available){
-    A_curr_acknum +=  20;
+  struct pkt packet;
+  packet.seqnum = A_curr_seqno;         
+  packet.acknum = A_curr_acknum;
+  memcpy(packet.payload,message.data,20);
+  packet.checksum = calculate_checksum(packet.seqnum, packet.acknum, packet.payload);
+
+  A_curr_seqno ++;
+  A_curr_acknum+=20;
+
+  A_window[A_next_window_index] = packet;
+  A_next_window_index++;
+
+  if(A_read_to_send){
+    printf("A sent: ");
+    dump_packet(A_window[next_packet]);
     
-    packet.seqnum = A_curr_seqno;
-    packet.acknum = A_curr_acknum; //this probably needs to be differned than seqno
-    memcpy(&message.data,&packet.payload,20); //copy message data into packte
-    packet.checksum = calculate_checksum(packet.seqnum,packet.acknum,&packet.payload);
-    A_window[A_next_window_index] = packet;
-    A_curr_seqno++;
-    A_next_window_index++;
-    A_window_available = (WINDOW_SIZE > A_next_window_index ? 1 : 0 );
-    printf("A is Sending: ");
-    dump_packet(packet); 
-    tolayer3(A,packet);
-   }
-    
+    in_travel = A_window[next_packet];
+    tolayer3(A,A_window[next_packet]);
+    A_read_to_send = 0;
+  }
 
 }
-
 /* called from layer 3, when a packet arrives for layer 4 */
 void
 A_input(packet)
   struct pkt packet;
 {
-
-    int i;
-  printf("A IN IS BEING CALLED\n");
-  //verify incoming packet checksum
-  if(calculate_checksum(packet.seqnum,packet.acknum,&packet.payload) == packet.checksum){
-    for(i =0; i < WINDOW_SIZE; i++){
-      if(packet.acknum == A_window[i].acknum){
-        A_window_acks[i] = 1;
-
-      }
-    }
-  }
-  
-  int leftmost_unacked;
-  for(i=0; i < WINDOW_SIZE; i++){
-    if(!A_window_acks[i]){
-      leftmost_unacked = i;
-      break;
-    }
-  }
-
-  if(A_window_acks[0]){
-    //slide window
-    //A_window += leftmost_unacked;
-    int j = 0 ;
-    for( i=leftmost_unacked; i < WINDOW_SIZE; i++){
-      A_window[j] = A_window[i];
-      A_window_acks[j] = A_window_acks[i];
-      A_window_sent[j] = A_window_sent[i];
-      j++;
-    }
-    A_next_window_index -= leftmost_unacked;
-  }
-  /*
-  for(int i=0; i< WINDOW_SIZE; i++){
-      //make sure we aren't sending packets twice or packets that have already been received
-      if(!A_window_acks[i] && !A_window_sent[i]){
-        A_window_sent[i] = 1; //mark packet as sent
-        tolayer3(A,A_window[i]);
-      }
-
-  }
-  */
+  printf("A_in called\n");
+  if(packet.acknum == in_travel.acknum){
+    A_read_to_send = 1;
+    next_packet++;
+  } 
 }
 
 /* called when A's timer goes off */
 void
 A_timerinterrupt (void)
 {
-  
   printf("A TIMERINTERRUPT IS BEING CALLED\n");
 } 
 
@@ -214,7 +181,7 @@ A_init (void)
 {
 
   printf("A INIT IS BEING CALLED\n");
-  A_window = (struct pkt*) malloc(WINDOW_SIZE * sizeof(struct pkt));
+  A_window = (struct pkt*) malloc(50 * sizeof(struct pkt));
   A_window_acks = (bool*) malloc(WINDOW_SIZE * sizeof(bool));
   A_window_sent = (bool*) malloc(WINDOW_SIZE * sizeof(bool));
   
@@ -222,6 +189,8 @@ A_init (void)
   A_next_window_index = 0;
   A_window_available = 1;
   A_curr_acknum = FIRST_SEQNO;
+  A_read_to_send = 1;
+  to_send = 0;
 } 
 
 /* called from layer 3, when a packet arrives for layer 4 at B*/
@@ -229,33 +198,20 @@ void
 B_input (packet)
     struct pkt packet;
 {
-  printf("B IN IS BEING CALLED\n");
- struct pkt ack_packet;
- if(B_window_available){
-   //store incoming packet on B window 
-   B_window[B_next_window_index] = packet;
-   //verify incoming packet checksum
-   if(calculate_checksum(packet.seqnum,packet.acknum,&packet.payload) == packet.checksum){ 
-     ack_packet.seqnum = B_curr_seqno;
-     ack_packet.acknum = packet.acknum; 
-     //memcpy(ack_packet.payload,0,20); //what should the payload be for an ack packet
-     ack_packet.checksum = calculate_checksum(ack_packet.seqnum, ack_packet.acknum, NULL);
-     B_curr_seqno++;
-     B_next_window_index++;
-     printf("B GOT: "); 
-     dump_packet(packet);
-     tolayer5(packet.payload);
-     //B_window_sent[i] = 1; //mark packet as sent
-     
-     tolayer3(B,ack_packet);
-     B_window_available = (WINDOW_SIZE > B_next_window_index ? 1 : 0 );
-   }
+  printf("B_in called\n");
+  if(packet.checksum == calculate_checksum(packet.seqnum, packet.acknum, packet.payload)){
+    printf("B ACKED packet %s\n",packet.payload);
+    struct pkt ack_packet;
+    ack_packet.seqnum = B_curr_seqno;         
+    ack_packet.acknum = packet.acknum;
+    //memcpy(ack_packet.payload,0,20);
+    ack_packet.checksum = calculate_checksum(ack_packet.seqnum, ack_packet.acknum, NULL);
 
- }
-
-   
+    B_curr_seqno ++;
+    tolayer3(B,ack_packet);
+    tolayer5(packet.payload); 
+  }
 }
-
 
 /* the following rouytine will be called once (only) before any other */
 /* entity B routines are called. You can use it to do any initialization */
