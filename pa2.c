@@ -168,6 +168,7 @@ A_input(packet)
     //keep track of which has been acked
     printf("packet is acked\n");
     A_window_acks[next_packet] = 1;//has been acked
+    stoptimer(A);//stop timer for this packet cause it has been acked
     next_packet++;
   }else{
     printf("received NAK\n");
