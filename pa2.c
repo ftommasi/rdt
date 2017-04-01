@@ -150,7 +150,7 @@ A_output (message)
     
     in_travel = A_window[next_packet];
     tolayer3(A,A_window[next_packet]);
-     //start the timer for this packet that was sent.
+    //start the timer for this packet that was sent.
     printf("A out is starting timer.\n");
     starttimer(A, 20);
     A_read_to_send = 0;
@@ -166,7 +166,7 @@ A_input(packet)
   if(packet.acknum == in_travel.acknum){
     A_read_to_send = 1;
     //keep track of which has been acked
-    printf("packet is acked\n");
+    printf("packet is acked, stopping the timer\n");
     A_window_acks[next_packet] = 1;//has been acked
     stoptimer(A);//stop timer for this packet cause it has been acked
     next_packet++;
@@ -184,13 +184,19 @@ A_timerinterrupt (void)
   printf("A TIMERINTERRUPT IS BEING CALLED\n");
   //need to possibly retranmsit the packet that just timedout if it wasnt acked
   // within the timer period
-  if(A_window_acks[next_packet-1] == 1){//has been acked
+  /*if(A_window_acks[next_packet-1] == 1){//has been acked
     //no retransmission
     printf("A packet %s has been acked\n", in_travel.payload);
-  }
-  else{//retransmit
+  }*/
+  //else{//retransmit
     printf("A packet %s has not been acked\n", in_travel.payload);
-  }
+    //figure out what hasnt been acked and restransmit
+    
+    tolayer3(A, A_window[next_packet]);
+    //restart timer for this packet
+    starttimer(A, 20);
+    printf("A starting timer for resent packet %s", A_window[next_packet].payload);
+  //}
 } 
 
 /* the following routine will be called once (only) before any other */
