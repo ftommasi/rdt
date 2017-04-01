@@ -226,6 +226,11 @@ B_input (packet)
   printf("B_in called\n");
   struct pkt ack_packet;
   bool duplicate = 0;
+  ack_packet.seqnum = B_curr_seqno;         
+  ack_packet.acknum = packet.acknum;
+  //memcpy(ack_packet.payload,0,20);
+  ack_packet.checksum = calculate_checksum(ack_packet.seqnum, ack_packet.acknum, NULL);
+
   if(packet.checksum == calculate_checksum(packet.seqnum, packet.acknum, packet.payload)){
     int i;
     for(i = 0; i < B_next_window_index; i++){
@@ -239,15 +244,12 @@ B_input (packet)
       printf("B ACKED new packet %s\n",packet.payload);
       B_window[B_next_window_index] = packet;//buffer packet to detect duplicates
       B_next_window_index++;
-      ack_packet.seqnum = B_curr_seqno;         
-      ack_packet.acknum = packet.acknum;
-      //memcpy(ack_packet.payload,0,20);
-      ack_packet.checksum = calculate_checksum(ack_packet.seqnum, ack_packet.acknum, NULL);
-
       B_curr_seqno ++;
-      tolayer3(B,ack_packet);
       tolayer5(packet.payload);
     }
+
+    tolayer3(B,ack_packet);
+
   }else{
     printf("checksum failed for packet %s\n",packet.payload);
   }
