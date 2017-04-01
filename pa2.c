@@ -166,7 +166,7 @@ A_input(packet)
   if(packet.acknum == in_travel.acknum){
     A_read_to_send = 1;
     //keep track of which has been acked
-    printf("packet is acked, stopping the timer\n");
+    printf("packet %s is acked, stopping the timer\n", in_travel.payload);
     A_window_acks[next_packet] = 1;//has been acked
     stoptimer(A);//stop timer for this packet cause it has been acked
     next_packet++;
@@ -225,21 +225,34 @@ B_input (packet)
 {
   printf("B_in called\n");
   struct pkt ack_packet;
-  if(packet.checksum == calculate_checksum(packet.seqnum, packet.acknum, packet.payload)){
-    printf("B ACKED packet %s\n",packet.payload);
-    ack_packet.seqnum = B_curr_seqno;         
-    ack_packet.acknum = packet.acknum;
-    //memcpy(ack_packet.payload,0,20);
-    ack_packet.checksum = calculate_checksum(ack_packet.seqnum, ack_packet.acknum, NULL);
 
-    B_curr_seqno ++;
-    tolayer3(B,ack_packet);
-    tolayer5(packet.payload); 
+  if(packet.checksum == calculate_checksum(packet.seqnum, packet.acknum, packet.payload)){
+    B_window[B_next_window_index] = packet;//buffer packet to detect duplicates
+    B_next_window_index++;
+    
+    int i;
+    for(i = 0; i < length(B_window); i++){
+      if(packet.seqnum == B_window[i].seqnum){
+        //duplicate detected
+        printf("packet %s is a duplicate do nothing\n", packet.payload);
+      }
+      else{//not a duplicate, go achead and ack
+        printf("B ACKED packet %s\n",packet.payload);
+        ack_packet.seqnum = B_curr_seqno;         
+        ack_packet.acknum = packet.acknum;
+        //memcpy(ack_packet.payload,0,20);
+        ack_packet.checksum = calculate_checksum(ack_packet.seqnum, ack_packet.acknum, NULL);
+
+        B_curr_seqno ++;
+        tolayer3(B,ack_packet);
+        tolayer5(packet.payload);
+      }//end else
+    }//end for
   }
   else{
-      ack_packet.acknum = 0;
-      tolayer3(B,ack_packet);
-    }
+    ack_packet.acknum = 0;
+    tolayer3(B,ack_packet);
+  }
 }
 
 /* the following rouytine will be called once (only) before any other */
