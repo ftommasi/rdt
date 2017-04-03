@@ -50,17 +50,14 @@ struct pkt* A_buffer;
 struct pkt* B_buffer;
 
 struct pkt in_travel;
+struct pkt* A_in_travel_buffer;
 
-int next_packet;
+int A_next_packet;
+int B_next_packet;
 
 bool* A_buffer_acks;
-bool* B_buffer_acks;
 
-bool* A_buffer_sent;
-bool* B_buffer_sent;
 
-bool A_buffer_available;
-bool B_buffer_available;
 bool A_ready_to_send;
 
 int A_curr_seqno ;
@@ -70,6 +67,13 @@ int B_next_buffer_index;
 
 int A_curr_acknum;
 int B_curr_acknum;
+
+int A_window_base;
+int A_window_end;
+
+int B_window_base;
+int B_window_end;
+
 
 /* Please use the following values in your program */
 
@@ -158,13 +162,13 @@ A_output (message)
 
     A_buffer[A_next_buffer_index] = packet;
     A_next_buffer_index++;
-    printf("next_packet: %d, A: ",next_packet);
+    printf("A_next_packet: %d, A: ", A_next_packet);
     dumpA();    
   if(A_ready_to_send){
     printf("A sent: ");
-    dump_packet(A_buffer[next_packet]);
-    in_travel = A_buffer[next_packet];
-    tolayer3(A,A_buffer[next_packet]);
+    dump_packet(A_buffer[A_next_packet]);
+    in_travel = A_buffer[A_next_packet];
+    tolayer3(A,A_buffer[A_next_packet]);
     //start the timer for this packet that was sent.
     printf("A out is starting timer.\n");
     starttimer(A,RXMT_TIMEOUT );
@@ -179,14 +183,14 @@ A_input(packet)
 {
   printf("A_in called\n");
   //only do stuff when its the correct packet and it hasnt been acked already
-  if(packet.acknum == in_travel.acknum && !A_buffer_acks[next_packet]){
+  if(packet.acknum == in_travel.acknum && !A_buffer_acks[A_next_packet]){
     A_ready_to_send = 1;
     //keep track of which has been acked
     printf("packet %s is acked, stopping the timer\n", in_travel.payload);
-    A_buffer_acks[next_packet] = 1;//has been acked
+    A_buffer_acks[A_next_packet] = 1;//has been acked
     //stopping timer multiple times in a row
     stoptimer(A);//stop timer for this packet cause it has been acked
-    next_packet++;
+    A_next_packet++;
   }else{
     printf("received ack for another packet\n");
   } 
@@ -199,10 +203,10 @@ A_timerinterrupt (void)
   printf("A TIMERINTERRUPT IS BEING CALLED\n");
   printf("A packet %s has not been acked\n", in_travel.payload);
   //restransmit unacked packet
-  tolayer3(A, A_buffer[next_packet]);
+  tolayer3(A, A_buffer[A_next_packet]);
   //restart timer for this packet
   starttimer(A,RXMT_TIMEOUT );
-  printf("A starting timer for resent packet %s", A_buffer[next_packet].payload);
+  printf("A starting timer for resent packet %s", A_buffer[A_next_packet].payload);
 } 
 
 /* the following routine will be called once (only) before any other */
@@ -212,15 +216,16 @@ A_init (void)
 {
 
   printf("A INIT IS BEING CALLED\n");
-  A_buffer = (struct pkt*) malloc(BUFFER_SIZE* sizeof(struct pkt));
-  A_buffer_acks = (bool*) malloc(BUFFER_SIZE* sizeof(bool));
-  A_buffer_sent = (bool*) malloc(WINDOW_SIZE * sizeof(bool));
-  
+  A_buffer = (struct pkt*) malloc(BUFFER_SIZE * sizeof(struct pkt));
+  A_buffer_acks = (bool*) malloc(BUFFER_SIZE * sizeof(bool));
+  A_in_travel_buffer = (struct pkt*) malloc(WINDOW_SIZE * sizeof(struct pkt));
+
   A_curr_seqno = FIRST_SEQNO;
   A_next_buffer_index = 0;
-  A_buffer_available = 1;
   A_curr_acknum = FIRST_SEQNO;
   A_ready_to_send = 1;
+  A_window_base = 0;
+  A_window_end = WINDOW_SIZE;
 } 
 
 /* called from layer 3, when a packet arrives for layer 4 at B*/
@@ -268,13 +273,13 @@ B_init (void)
   
   printf("B INIT IS BEING CALLED\n");
   B_buffer = (struct pkt*) malloc(BUFFER_SIZE* sizeof(struct pkt));
-  B_buffer_acks = (bool*) malloc(WINDOW_SIZE * sizeof(bool));
-  B_buffer_sent = (bool*) malloc(WINDOW_SIZE * sizeof(bool));
-  
+ 
   B_curr_seqno = FIRST_SEQNO;
   B_next_buffer_index = 0;
-  B_buffer_available = 1;
   B_curr_acknum = FIRST_SEQNO;
+
+  B_window_base = 0;
+  B_window_end = WINDOW_SIZE;
 } 
 
 /* called at end of simulation to print final statistics */
