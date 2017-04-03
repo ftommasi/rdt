@@ -133,7 +133,7 @@ void dumpA(){
 void dumpB(){
   int i;
   printf("start: %d end %d\n", B_window_base, B_window_end);
-  for(i=B_window_base; i < B_window_end && i < B_next_buffer_index; i++){
+  for(i=0; i < B_next_buffer_index; i++){
     printf("%c | ",B_buffer[i].payload[0]);
   }
   printf("\n");
@@ -179,7 +179,7 @@ A_output (message)
   if(A_ready_to_send){
     if(!A_timer_set){
       printf("A out is starting timer.\n");
-      //starttimer(A,RXMT_TIMEOUT);
+      starttimer(A,RXMT_TIMEOUT);
       A_timer_set = 1;
     }
     printf("A sent %d: ",A_next_packet);
@@ -216,7 +216,9 @@ A_input(packet)
   }
   
   int i;
-  for(i=A_window_base; i != A_window_end && i < A_next_buffer_index; i = (i+1) % BUFFER_SIZE){
+  
+  for(i=0; i < A_next_buffer_index; i = (i+1) % BUFFER_SIZE){
+  //for(i=A_window_base; i != A_window_end && i < A_next_buffer_index; i = (i+1) % BUFFER_SIZE){
     //only do stuff when its the correct packet and it hasnt been acked already
       if(packet.acknum == A_buffer[i].acknum && !A_buffer_acks[i]){
         printf("packet %s is acked\n", packet.payload);
@@ -242,7 +244,7 @@ A_timerinterrupt (void)
   //restransmit unacked packet
   for(i=A_window_base; i != A_window_end; i = (i+1) % BUFFER_SIZE){
     printf(".5%f | ",A_packet_timers[i]);
-    if(A_packet_timers[i] > 0 && !A_buffer_acks[i]){
+    if(A_packet_timers[i] <= 0 && !A_buffer_acks[i]){
       packet_timeout = i;
       tolayer3(A, A_buffer[i]);
     }
@@ -250,11 +252,10 @@ A_timerinterrupt (void)
 
   printf("\n");
   printf("A TIMERINTERRUPT IS BEING CALLED\n");
-  printf("A packet %s has not been acked\n", in_travel.payload);
   
   
   //restart timer for this packet
-  //starttimer(A,RXMT_TIMEOUT );
+  starttimer(A,RXMT_TIMEOUT );
   printf("A starting timer for resent packet %s", A_buffer[packet_timeout].payload);
 } 
 
