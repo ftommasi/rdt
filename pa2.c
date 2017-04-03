@@ -114,6 +114,15 @@ calculate_checksum(int seqnum, int acknum, char* payload)
 }
 
 
+void dumpA(){
+  int i;
+  for(i=0; i < A_next_buffer_index; i++){
+    printf("%c | ", A_buffer[i].payload[0]);
+  }
+  printf("\n");
+}
+
+
 void
 dump_packet(packet)
 struct pkt packet;
@@ -133,10 +142,11 @@ A_output (message)
 {
   printf("A_out called ");
    if(A_ready_to_send){
-    printf("-ready-\n");
+    printf("-ready-");
    }else{
-    printf("-NOT ready-\n");
-   } 
+    printf("-NOT ready-");
+   }
+    printf(" payload: %s \n",message.data);
     struct pkt packet;
     packet.seqnum = A_curr_seqno;         
     packet.acknum = A_curr_acknum;
@@ -148,11 +158,11 @@ A_output (message)
 
     A_buffer[A_next_buffer_index] = packet;
     A_next_buffer_index++;
-      
+    printf("next_packet: %d, A: ",next_packet);
+    dumpA();    
   if(A_ready_to_send){
     printf("A sent: ");
     dump_packet(A_buffer[next_packet]);
-    
     in_travel = A_buffer[next_packet];
     tolayer3(A,A_buffer[next_packet]);
     //start the timer for this packet that was sent.
@@ -168,11 +178,13 @@ A_input(packet)
   struct pkt packet;
 {
   printf("A_in called\n");
-  if(packet.acknum == in_travel.acknum){
+  //only do stuff when its the correct packet and it hasnt been acked already
+  if(packet.acknum == in_travel.acknum && !A_buffer_acks[next_packet]){
     A_ready_to_send = 1;
     //keep track of which has been acked
     printf("packet %s is acked, stopping the timer\n", in_travel.payload);
     A_buffer_acks[next_packet] = 1;//has been acked
+    //stopping timer multiple times in a row
     stoptimer(A);//stop timer for this packet cause it has been acked
     next_packet++;
   }else{
@@ -201,7 +213,7 @@ A_init (void)
 
   printf("A INIT IS BEING CALLED\n");
   A_buffer = (struct pkt*) malloc(BUFFER_SIZE* sizeof(struct pkt));
-  A_buffer_acks = (bool*) malloc(WINDOW_SIZE * sizeof(bool));
+  A_buffer_acks = (bool*) malloc(BUFFER_SIZE* sizeof(bool));
   A_buffer_sent = (bool*) malloc(WINDOW_SIZE * sizeof(bool));
   
   A_curr_seqno = FIRST_SEQNO;
