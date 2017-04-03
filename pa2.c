@@ -52,16 +52,19 @@ struct pkt* B_buffer;
 struct pkt in_travel;
 struct pkt* A_in_travel_buffer;
 
+double* A_packet_timers;
+
 int A_next_packet;
 int B_next_packet;
 
 bool* A_buffer_acks;
-
+bool* B_buffer_acks;
 
 bool A_ready_to_send;
+bool A_timer_set;
 
-int A_curr_seqno ;
-int B_curr_seqno ;
+int A_curr_seqno;
+int B_curr_seqno;
 int A_next_buffer_index;
 int B_next_buffer_index;
 
@@ -120,12 +123,21 @@ calculate_checksum(int seqnum, int acknum, char* payload)
 
 void dumpA(){
   int i;
+  printf("start: %d end %d\n", A_window_base, A_window_end);
   for(i=0; i < A_next_buffer_index; i++){
     printf("%c | ", A_buffer[i].payload[0]);
   }
   printf("\n");
 }
 
+void dumpB(){
+  int i;
+  printf("start: %d end %d\n", B_window_base, B_window_end);
+  for(i=B_window_base; i < B_window_end && i < B_next_buffer_index; i++){
+    printf("%c | ",B_buffer[i].payload[0]);
+  }
+  printf("\n");
+}
 
 void
 dump_packet(packet)
@@ -145,34 +157,42 @@ A_output (message)
     struct msg message;
 {
   printf("A_out called ");
-   if(A_ready_to_send){
-    printf("-ready-");
-   }else{
-    printf("-NOT ready-");
-   }
-    printf(" payload: %s \n",message.data);
-    struct pkt packet;
-    packet.seqnum = A_curr_seqno;         
-    packet.acknum = A_curr_acknum;
-    memcpy(packet.payload,message.data,20);
-    packet.checksum = calculate_checksum(packet.seqnum, packet.acknum, packet.payload);
-
-    A_curr_seqno ++;
-    A_curr_acknum+=20;
-
-    A_buffer[A_next_buffer_index] = packet;
-    A_next_buffer_index++;
-    printf("A_next_packet: %d, A: ", A_next_packet);
-    dumpA();    
   if(A_ready_to_send){
-    printf("A sent: ");
+    printf("-ready-");
+  }else{
+    printf("-NOT ready-");
+  }
+  printf(" payload: %s \n",message.data);
+  struct pkt packet;
+  packet.seqnum = A_curr_seqno;         
+  packet.acknum = A_curr_acknum;
+  memcpy(packet.payload,message.data,20);
+  packet.checksum = calculate_checksum(packet.seqnum, packet.acknum, packet.payload);
+
+  A_curr_seqno ++;
+  A_curr_acknum+=20;
+
+  A_buffer[A_next_buffer_index] = packet;
+  A_next_buffer_index++;
+  printf("A_next_packet: %d, A: ", A_next_packet);
+  dumpA();    
+  if(A_ready_to_send){
+    if(!A_timer_set){
+      printf("A out is starting timer.\n");
+      //starttimer(A,RXMT_TIMEOUT);
+      A_timer_set = 1;
+    }
+    printf("A sent %d: ",A_next_packet);
     dump_packet(A_buffer[A_next_packet]);
     in_travel = A_buffer[A_next_packet];
     tolayer3(A,A_buffer[A_next_packet]);
+    A_packet_timers[A_next_packet] = time_now;
+    A_next_packet++; 
     //start the timer for this packet that was sent.
-    printf("A out is starting timer.\n");
-    starttimer(A,RXMT_TIMEOUT );
-    A_ready_to_send = 0;
+    if(A_next_packet > A_window_end){
+      A_ready_to_send = 0; 
+    }
+
   }
 
 }
@@ -182,31 +202,60 @@ A_input(packet)
   struct pkt packet;
 {
   printf("A_in called\n");
-  //only do stuff when its the correct packet and it hasnt been acked already
-  if(packet.acknum == in_travel.acknum && !A_buffer_acks[A_next_packet]){
-    A_ready_to_send = 1;
-    //keep track of which has been acked
-    printf("packet %s is acked, stopping the timer\n", in_travel.payload);
-    A_buffer_acks[A_next_packet] = 1;//has been acked
-    //stopping timer multiple times in a row
-    stoptimer(A);//stop timer for this packet cause it has been acked
-    A_next_packet++;
-  }else{
-    printf("received ack for another packet\n");
-  } 
+  //slide window
+  if(A_buffer_acks[A_window_base]){
+    int i;
+    int next_unacked = 0;
+    for(i=A_window_base; i != A_window_end; i = (i+1) % BUFFER_SIZE){
+      if(!A_buffer_acks[i]) break;
+      next_unacked++;
+    }
+    A_ready_to_send = (next_unacked > 0 ? 1 : 0); 
+    A_window_base = (A_window_base + next_unacked) % BUFFER_SIZE;
+    A_window_end = (A_window_end + next_unacked) % BUFFER_SIZE;
+  }
+  
+  int i;
+  for(i=A_window_base; i != A_window_end && i < A_next_buffer_index; i = (i+1) % BUFFER_SIZE){
+    //only do stuff when its the correct packet and it hasnt been acked already
+      if(packet.acknum == A_buffer[i].acknum && !A_buffer_acks[i]){
+        printf("packet %s is acked\n", packet.payload);
+        A_buffer_acks[i] = 1;//has been acked
+        //A_next_packet = (A_next_packet + 1) % BUFFER_SIZE;
+      }
+      //keep track of which has been acked
+      //stopping timer multiple times in a row
+      //stoptimer(A);//stop timer for this packet cause it has been acked
+    }
 }
 
 /* called when A's timer goes off */
 void
 A_timerinterrupt (void)
 {
+  int packet_timeout;
+  int i;
+  for(i=A_window_base; i != A_window_end; i = (i+1) % BUFFER_SIZE){
+    A_packet_timers[i] = time_now - A_packet_timers[i];
+  }
+  
+  //restransmit unacked packet
+  for(i=A_window_base; i != A_window_end; i = (i+1) % BUFFER_SIZE){
+    printf(".5%f | ",A_packet_timers[i]);
+    if(A_packet_timers[i] > 0 && !A_buffer_acks[i]){
+      packet_timeout = i;
+      tolayer3(A, A_buffer[i]);
+    }
+  }
+
+  printf("\n");
   printf("A TIMERINTERRUPT IS BEING CALLED\n");
   printf("A packet %s has not been acked\n", in_travel.payload);
-  //restransmit unacked packet
-  tolayer3(A, A_buffer[A_next_packet]);
+  
+  
   //restart timer for this packet
-  starttimer(A,RXMT_TIMEOUT );
-  printf("A starting timer for resent packet %s", A_buffer[A_next_packet].payload);
+  //starttimer(A,RXMT_TIMEOUT );
+  printf("A starting timer for resent packet %s", A_buffer[packet_timeout].payload);
 } 
 
 /* the following routine will be called once (only) before any other */
@@ -219,11 +268,13 @@ A_init (void)
   A_buffer = (struct pkt*) malloc(BUFFER_SIZE * sizeof(struct pkt));
   A_buffer_acks = (bool*) malloc(BUFFER_SIZE * sizeof(bool));
   A_in_travel_buffer = (struct pkt*) malloc(WINDOW_SIZE * sizeof(struct pkt));
+  A_packet_timers = (int*) malloc(WINDOW_SIZE * sizeof(int)); 
 
   A_curr_seqno = FIRST_SEQNO;
   A_next_buffer_index = 0;
   A_curr_acknum = FIRST_SEQNO;
   A_ready_to_send = 1;
+  A_timer_set = 0;
   A_window_base = 0;
   A_window_end = WINDOW_SIZE;
 } 
@@ -243,7 +294,7 @@ B_input (packet)
 
   if(packet.checksum == calculate_checksum(packet.seqnum, packet.acknum, packet.payload)){
     int i;
-    for(i = 0; i < B_next_buffer_index; i++){
+    for(i = B_window_base; i != B_window_end && i < B_next_buffer_index; i = (i+1) % BUFFER_SIZE){
       if(packet.seqnum == B_buffer[i].seqnum){
         //duplicate detected
         duplicate = 1;
@@ -252,12 +303,29 @@ B_input (packet)
     }
     if(!duplicate){    
       printf("B ACKED new packet %s\n",packet.payload);
+      //B_buffer[B_next_buffer_index] = packet;//buffer packet to detect duplicates
       B_buffer[B_next_buffer_index] = packet;//buffer packet to detect duplicates
-      B_next_buffer_index++;
+      B_buffer_acks[B_next_buffer_index] = 1;//buffer packet to detect duplicates
+      B_next_buffer_index ++;
       B_curr_seqno ++;
-      tolayer5(packet.payload);
     }
-
+    printf("B: ");
+    dumpB();
+    //slide window
+    if(B_buffer_acks[B_window_base]){
+      int i;
+      int next_unacked = 0;
+      for(i=B_window_base; i != B_window_end; i = (i+1) % BUFFER_SIZE){
+        if(!B_buffer_acks[i]) break;
+        next_unacked++;
+      }
+      //write to layer 5 as packet slide out of window
+      for(i=B_window_base; i != B_window_base+next_unacked; i = (i+1) % BUFFER_SIZE){
+        tolayer5(B_buffer[i].payload);
+      }
+      B_window_base = (B_window_base + next_unacked) % BUFFER_SIZE;
+      B_window_end = (B_window_end + next_unacked) % BUFFER_SIZE;
+    }
     tolayer3(B,ack_packet);
 
   }else{
@@ -272,8 +340,9 @@ B_init (void)
 {
   
   printf("B INIT IS BEING CALLED\n");
-  B_buffer = (struct pkt*) malloc(BUFFER_SIZE* sizeof(struct pkt));
- 
+  B_buffer = (struct pkt*) malloc(BUFFER_SIZE * sizeof(struct pkt));
+  B_buffer_acks = (bool*) malloc(BUFFER_SIZE * sizeof(bool)); 
+
   B_curr_seqno = FIRST_SEQNO;
   B_next_buffer_index = 0;
   B_curr_acknum = FIRST_SEQNO;
