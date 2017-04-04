@@ -122,30 +122,37 @@ calculate_checksum(int seqnum, int acknum, char* payload)
 
 
 void dumpA(){
+  printf("-----------------------A DUMP--------------------------------\n");
   int i;
   printf("start: %d end %d\n", A_window_base, A_window_end);
-  for(i=0; i < A_next_buffer_index; i++){
-    printf("%c | ", A_buffer[i].payload[0]);
+  for(i=0; i < BUFFER_SIZE; i++){
+    printf("%d {%c,%d,%d}  | ", i, A_buffer[i].payload[0],A_buffer[i].seqnum,A_buffer[i].acknum);
+    
   }
+
   printf("\n");
+  printf("-----------------------/A DUMP--------------------------------\n");
 }
 
 void dumpB(){
+  printf("-----------------------B DUMP--------------------------------\n");
   int i;
   printf("start: %d end %d\n", B_window_base, B_window_end);
-  for(i=0; i < B_next_buffer_index; i++){
-    printf("%c | ",B_buffer[i].payload[0]);
+  for(i=0; i < BUFFER_SIZE; i++){
+    printf("%d {%c,%d,%d}  | ", i, B_buffer[i].payload[0],B_buffer[i].seqnum,B_buffer[i].acknum);
   }
   printf("\n");
+  printf("-----------------------/B DUMP--------------------------------\n");
 }
 
 void
 dump_packet(packet)
-struct pkt packet;
+  struct pkt packet;
 {
   printf("%d,%d,%d,%s\n",packet.seqnum, packet.acknum, packet.checksum, packet.payload);
 
 }
+
 
 /********* STUDENTS WRITE THE NEXT SEVEN ROUTINES *********/
 
@@ -203,6 +210,7 @@ A_input(packet)
 {
   printf("A_in called\n");
   //slide window
+  printf("sliding window\n");
   if(A_buffer_acks[A_window_base]){
     int i;
     int next_unacked = 0;
@@ -221,13 +229,15 @@ A_input(packet)
   //for(i=A_window_base; i != A_window_end && i < A_next_buffer_index; i = (i+1) % BUFFER_SIZE){
     //only do stuff when its the correct packet and it hasnt been acked already
       if(packet.acknum == A_buffer[i].acknum && !A_buffer_acks[i]){
-        printf("packet %s is acked\n", packet.payload);
+        printf("packet %s is acked\n", A_buffer[i].payload);
+        A_packet_timers[i] = time_now;
         A_buffer_acks[i] = 1;//has been acked
         //A_next_packet = (A_next_packet + 1) % BUFFER_SIZE;
       }
       //keep track of which has been acked
       //stopping timer multiple times in a row
       //stoptimer(A);//stop timer for this packet cause it has been acked
+      //starttimer(A,RXMT_TIMEOUT);
     }
 }
 
@@ -235,7 +245,8 @@ A_input(packet)
 void
 A_timerinterrupt (void)
 {
-  int packet_timeout;
+  printf("A TIMERINTERRUPT IS BEING CALLED\n");
+  int packet_timeout = -1;;
   int i;
   for(i=A_window_base; i != A_window_end; i = (i+1) % BUFFER_SIZE){
     A_packet_timers[i] = time_now - A_packet_timers[i];
@@ -243,20 +254,19 @@ A_timerinterrupt (void)
   
   //restransmit unacked packet
   for(i=A_window_base; i != A_window_end; i = (i+1) % BUFFER_SIZE){
-    printf(".5%f | ",A_packet_timers[i]);
-    if(A_packet_timers[i] <= 0 && !A_buffer_acks[i]){
-      packet_timeout = i;
+    //printf("%.5f | ",A_packet_timers[i]);
+    if(A_packet_timers[i] >= RXMT_TIMEOUT && !A_buffer_acks[i]){
+      if(packet_timeout < 0){
+        packet_timeout = i;
+      }
+      printf("retransmitting  %s", A_buffer[i].payload);
+      A_packet_timers[i] = time_now;
       tolayer3(A, A_buffer[i]);
     }
   }
-
   printf("\n");
-  printf("A TIMERINTERRUPT IS BEING CALLED\n");
-  
-  
   //restart timer for this packet
   starttimer(A,RXMT_TIMEOUT );
-  printf("A starting timer for resent packet %s", A_buffer[packet_timeout].payload);
 } 
 
 /* the following routine will be called once (only) before any other */
@@ -269,15 +279,24 @@ A_init (void)
   A_buffer = (struct pkt*) malloc(BUFFER_SIZE * sizeof(struct pkt));
   A_buffer_acks = (bool*) malloc(BUFFER_SIZE * sizeof(bool));
   A_in_travel_buffer = (struct pkt*) malloc(WINDOW_SIZE * sizeof(struct pkt));
-  A_packet_timers = (int*) malloc(WINDOW_SIZE * sizeof(int)); 
+  A_packet_timers = (double*) malloc(WINDOW_SIZE * sizeof(double)); 
+  int i;
+  struct pkt dummy;
+  dummy.seqnum = -1;
+  dummy.acknum = -1;
+  memcpy(dummy.payload,"GiveMeSomething2BRK\n",20);
+  for(i =0; i < BUFFER_SIZE; i++){
+   A_buffer[i] = dummy;
+   A_buffer_acks[i] = -1.0;
+  }
 
   A_curr_seqno = FIRST_SEQNO;
   A_next_buffer_index = 0;
-  A_curr_acknum = FIRST_SEQNO;
+  A_curr_acknum = FIRST_SEQNO+20;
   A_ready_to_send = 1;
   A_timer_set = 0;
   A_window_base = 0;
-  A_window_end = WINDOW_SIZE;
+  A_window_end = WINDOW_SIZE-1;
 } 
 
 /* called from layer 3, when a packet arrives for layer 4 at B*/
@@ -295,7 +314,8 @@ B_input (packet)
 
   if(packet.checksum == calculate_checksum(packet.seqnum, packet.acknum, packet.payload)){
     int i;
-    for(i = B_window_base; i != B_window_end && i < B_next_buffer_index; i = (i+1) % BUFFER_SIZE){
+    for(i = 0;  i < B_next_buffer_index; i = (i+1) % BUFFER_SIZE){
+    //for(i = B_window_base; i != B_window_end && i < B_next_buffer_index; i = (i+1) % BUFFER_SIZE){
       if(packet.seqnum == B_buffer[i].seqnum){
         //duplicate detected
         duplicate = 1;
@@ -304,13 +324,14 @@ B_input (packet)
     }
     if(!duplicate){    
       printf("B ACKED new packet %s\n",packet.payload);
+      B_next_buffer_index = packet.seqnum%BUFFER_SIZE; //= (packet.seqnum/20)%BUFFER_SIZE;
       //B_buffer[B_next_buffer_index] = packet;//buffer packet to detect duplicates
       B_buffer[B_next_buffer_index] = packet;//buffer packet to detect duplicates
       B_buffer_acks[B_next_buffer_index] = 1;//buffer packet to detect duplicates
-      B_next_buffer_index ++;
+      //B_next_buffer_index++; 
       B_curr_seqno ++;
     }
-    printf("B: ");
+    printf("B %d: ", B_next_buffer_index);
     dumpB();
     //slide window
     if(B_buffer_acks[B_window_base]){
@@ -343,13 +364,23 @@ B_init (void)
   printf("B INIT IS BEING CALLED\n");
   B_buffer = (struct pkt*) malloc(BUFFER_SIZE * sizeof(struct pkt));
   B_buffer_acks = (bool*) malloc(BUFFER_SIZE * sizeof(bool)); 
+  
+  int i;
+  struct pkt dummy;
+  dummy.seqnum = -1;
+  dummy.acknum = -1;
+  memcpy(dummy.payload,"GiveMeSomething2BRK\n",20);
+  for(i =0; i < BUFFER_SIZE; i++){
+   B_buffer[i] = dummy; 
+  }
+
 
   B_curr_seqno = FIRST_SEQNO;
   B_next_buffer_index = 0;
   B_curr_acknum = FIRST_SEQNO;
 
   B_window_base = 0;
-  B_window_end = WINDOW_SIZE;
+  B_window_end = WINDOW_SIZE-1;
 } 
 
 /* called at end of simulation to print final statistics */
