@@ -249,12 +249,12 @@ A_timerinterrupt (void)
   int packet_timeout = -1;;
   int i;
   printf("adjusting times\n");
-  for(i=0; i < BUFFER_SIZE-1; i = (i+1) % BUFFER_SIZE){
+  for(i=0; i < BUFFER_SIZE; i++){
     A_packet_timers[i] = time_now - A_packet_timers[i];
   }
   printf("checking what to retransmit\n");
   //restransmit unacked packet
-  for(i=A_window_base; i != A_window_end;  i = (i+1) % BUFFER_SIZE){
+  for(i=A_window_base; i != A_window_end && i < A_next_buffer_index;  i = (i+1) % BUFFER_SIZE){
   //for(i=0; i <BUFFER_SIZE-1;  i = (i+1) % BUFFER_SIZE){
     //printf("%.5f | ",A_packet_timers[i]);
     if(A_packet_timers[i] >= RXMT_TIMEOUT && !A_buffer_acks[i]){
