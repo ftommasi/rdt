@@ -126,7 +126,7 @@ void dumpA(){
   int i;
   printf("start: %d end %d\n", A_window_base, A_window_end);
   for(i=0; i < BUFFER_SIZE; i++){
-    printf("%d {%c,%d,%d}  | ", i, A_buffer[i].payload[0],A_buffer[i].seqnum,A_buffer[i].acknum);
+    printf("%d {%c,%d,%d,%d}  | ", i, A_buffer[i].payload[0],A_buffer[i].seqnum,A_buffer[i].acknum,A_buffer_acks[i]);
     
   }
 
@@ -248,12 +248,14 @@ A_timerinterrupt (void)
   printf("A TIMERINTERRUPT IS BEING CALLED\n");
   int packet_timeout = -1;;
   int i;
-  for(i=A_window_base; i != A_window_end; i = (i+1) % BUFFER_SIZE){
+  printf("adjusting times\n");
+  for(i=0; i < BUFFER_SIZE-1; i = (i+1) % BUFFER_SIZE){
     A_packet_timers[i] = time_now - A_packet_timers[i];
   }
-  
+  printf("checking what to retransmit\n");
   //restransmit unacked packet
-  for(i=A_window_base; i != A_window_end; i = (i+1) % BUFFER_SIZE){
+  for(i=A_window_base; i != A_window_end;  i = (i+1) % BUFFER_SIZE){
+  //for(i=0; i <BUFFER_SIZE-1;  i = (i+1) % BUFFER_SIZE){
     //printf("%.5f | ",A_packet_timers[i]);
     if(A_packet_timers[i] >= RXMT_TIMEOUT && !A_buffer_acks[i]){
       if(packet_timeout < 0){
@@ -279,7 +281,7 @@ A_init (void)
   A_buffer = (struct pkt*) malloc(BUFFER_SIZE * sizeof(struct pkt));
   A_buffer_acks = (bool*) malloc(BUFFER_SIZE * sizeof(bool));
   A_in_travel_buffer = (struct pkt*) malloc(WINDOW_SIZE * sizeof(struct pkt));
-  A_packet_timers = (double*) malloc(WINDOW_SIZE * sizeof(double)); 
+  A_packet_timers = (double*) malloc(BUFFER_SIZE* sizeof(double)); 
   int i;
   struct pkt dummy;
   dummy.seqnum = -1;
@@ -287,7 +289,8 @@ A_init (void)
   memcpy(dummy.payload,"GiveMeSomething2BRK\n",20);
   for(i =0; i < BUFFER_SIZE; i++){
    A_buffer[i] = dummy;
-   A_buffer_acks[i] = -1.0;
+   A_buffer_acks[i] = 0;
+   A_packet_timers[i] = 0;
   }
 
   A_curr_seqno = FIRST_SEQNO;
