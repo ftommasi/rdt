@@ -44,13 +44,15 @@ struct pkt {
 
 //C doesn't support bool so use char for least space
 #define bool char 
-#define BUFFER_SIZE 50
-
+#define BUFFER_SIZE 1050
+#define DEBUG 1
 //for stats
 int num_original_packets;
 int num_retransmissions;
 int num_acks;
 int num_corrupted_recvd;
+int total_num_corrupted = 0;
+int total_lost = 0;
 double* avg_rtt;
 //
 
@@ -174,13 +176,15 @@ void
 A_output (message)
     struct msg message;
 {
-  printf("A_out called ");
+  if(DEBUG){ 
+    printf("A_out called ");
   if(A_ready_to_send){
     printf("-ready-");
   }else{
     printf("-NOT ready-");
   }
   printf(" payload: %s \n",message.data);
+  }
   struct pkt packet;
   packet.seqnum = A_curr_seqno;         
   packet.acknum = A_curr_acknum;
@@ -194,16 +198,20 @@ A_output (message)
   A_buffer[A_next_buffer_index] = packet;
   A_buffer_acks[A_next_buffer_index] = 0;
   A_next_buffer_index = (A_next_buffer_index+1)%BUFFER_SIZE;
+  if(DEBUG){
   printf("A_next_packet: %d, A: ", A_next_packet);
-  dumpA();    
+  dumpA();  
+  }
   if(A_ready_to_send){
     if(!A_timer_set){
-      printf("A out is starting timer.\n");
+      if(DEBUG) printf("A out is starting timer.\n");
       starttimer(A,RXMT_TIMEOUT);
       A_timer_set = 1;
     }
-    printf("A sent %d: ",A_next_packet);
+    if(DEBUG){
+      printf("A sent %d: ",A_next_packet);
     dump_packet(A_buffer[A_next_packet]);
+    }
     in_travel = A_buffer[A_next_packet];
     tolayer3(A,A_buffer[A_next_packet]);
     A_packet_timers[A_next_packet] = time_now;
@@ -222,9 +230,11 @@ A_input(packet)
   struct pkt packet;
 {
   if(packet.checksum == calculate_checksum(packet.seqnum,packet.acknum,NULL)){
-  printf("A_in called\n");
+  if(DEBUG){
+    printf("A_in called\n");
   //slide window
   printf("sliding window\n");
+  }
   if(A_buffer_acks[A_window_base]){
     int i;
     int next_unacked = 0;
@@ -239,11 +249,13 @@ A_input(packet)
   
   int i;
   
-  printf("updating acked packets up to %d from %d - %d | %d\n",packet.acknum,A_window_base, A_window_end, A_next_buffer_index);
+  if(DEBUG)printf("updating acked packets up to %d from %d - %d | %d\n",packet.acknum,A_window_base, A_window_end, A_next_buffer_index);
   for(i=A_window_base; i != A_window_end && i < A_next_buffer_index; i = (i+1) % BUFFER_SIZE){
-    //only do stuff when its the correct packet and it hasnt been acked already
-      if(packet.acknum >= A_buffer[i].acknum ){
-        printf("all packet up to %d are acked\n", packet.acknum);
+     if(packet.acknum == A_buffer[i].seqnum){
+      A_packet_timers[i] = time_now - A_packet_timers[i];
+     } 
+    if(packet.acknum >= A_buffer[i].acknum ){
+        if(DEBUG)printf("all packet up to %d are acked\n", packet.acknum);
         A_packet_timers[i] = time_now;
         A_buffer_acks[i] = 1;//has been acked
         //A_next_packet = (A_next_packet + 1) % BUFFER_SIZE;
@@ -255,7 +267,7 @@ A_input(packet)
     }
   }else{
     num_corrupted_recvd++;
-    printf("ack packet corrupted\n");
+    if(DEBUG)printf("ack packet corrupted\n");
   }
 }
 
@@ -263,28 +275,31 @@ A_input(packet)
 void
 A_timerinterrupt (void)
 {
-  printf("A TIMERINTERRUPT IS BEING CALLED\n");
   int packet_timeout = -1;
   int i;
   bool break_flag = 0;
+  if(DEBUG){
   printf("adjusting times\n");
+  printf("A TIMERINTERRUPT IS BEING CALLED\n");
+  printf("checking what to retransmit (%d - %d)\n",A_window_base,A_window_end+1);
+  }
   for(i=0; i < BUFFER_SIZE; i++){
     A_packet_timers[i] = time_now - A_packet_timers[i];
   }
-  printf("checking what to retransmit (%d - %d)\n",A_window_base,A_window_end+1);
-  //restransmit unacked packet
+  
+    //restransmit unacked packet
   for(i=A_window_base; i != (A_window_end) && i < A_next_buffer_index ;  i = (i+1) % BUFFER_SIZE){
   //for(i=0; i <BUFFER_SIZE-1;  i = (i+1) % BUFFER_SIZE){
     //printf("%.5f | ",A_packet_timers[i]);
     if(!A_buffer_acks[i]){
-      printf("retransmitting  %s", A_buffer[i].payload);
+      if(DEBUG)printf("retransmitting  %s", A_buffer[i].payload);
       A_packet_timers[i] = time_now;
       num_retransmissions++;  
       tolayer3(A, A_buffer[i]);
       break;
     }
   }
-  printf("\n");
+  if(DEBUG)printf("\n");
   //restart timer for this packet
   starttimer(A,RXMT_TIMEOUT );
 } 
@@ -295,7 +310,7 @@ void
 A_init (void)
 {
 
-  printf("A INIT IS BEING CALLED\n");
+  if(DEBUG)printf("A INIT IS BEING CALLED\n");
   A_buffer = (struct pkt*) malloc(BUFFER_SIZE * sizeof(struct pkt));
   A_buffer_acks = (bool*) malloc(BUFFER_SIZE * sizeof(bool));
   A_in_travel_buffer = (struct pkt*) malloc(WINDOW_SIZE * sizeof(struct pkt));
@@ -305,7 +320,7 @@ A_init (void)
   struct pkt dummy;
   dummy.seqnum = -1;
   dummy.acknum = -1;
-  memcpy(dummy.payload,"GiveMeSomething2BRK\n",20);
+  memcpy(dummy.payload,"-------------------\n",20);
   for(i =0; i < BUFFER_SIZE; i++){
    A_buffer[i] = dummy;
    A_buffer_acks[i] = 0;
@@ -331,7 +346,7 @@ B_input (packet)
     struct pkt packet;
 {
   int generated_acknums[WINDOW_SIZE];
-  printf("B_in called\n");
+  if(DEBUG)printf("B_in called\n");
   struct pkt ack_packet;
   bool duplicate = 0;
   bool in_window = 1;
@@ -341,12 +356,14 @@ B_input (packet)
     for(i = B_window_base; i != B_window_end ; i = (i+1) % BUFFER_SIZE){
       if(packet.seqnum < B_buffer[B_window_base].seqnum || packet.seqnum > B_buffer[B_window_end].seqnum){
         in_window = 0;
-        printf("detected a packet out of window[%d - %d]. Acking {%c %d %d}",B_buffer[B_window_base].seqnum,packet.seqnum > B_buffer[B_window_end].seqnum,packet.payload[0],packet.seqnum,packet.acknum);
+        if(DEBUG)
+          printf("detected a packet out of window[%d - %d]. Acking {%c %d %d}"
+              ,B_buffer[B_window_base].seqnum,packet.seqnum > B_buffer[B_window_end].seqnum,packet.payload[0],packet.seqnum,packet.acknum);
       }
       if(B_buffer_acks[i] && B_buffer[i].seqnum == packet.seqnum && B_buffer[i].acknum == packet.acknum ){
         //we've already acked this packet. re ack only
         duplicate = 1;
-        printf("detected a previously acked packet at[%d-%d] %d. Acking{%c %d %d,%d}\n",B_window_base,B_window_end,i,packet.payload[0],packet.seqnum,packet.acknum,B_buffer_acks[i]);
+        if(DEBUG)printf("detected a previously acked packet at[%d-%d] %d. Acking{%c %d %d,%d}\n",B_window_base,B_window_end,i,packet.payload[0],packet.seqnum,packet.acknum,B_buffer_acks[i]);
       }
     }
     if(!B_inserted){
@@ -355,7 +372,7 @@ B_input (packet)
       in_window = 1;
     }
     if(!duplicate && in_window){    
-      printf("B ACKED new packet %s\nInserting into %d",packet.payload,B_next_buffer_index);
+      if(DEBUG)printf("B ACKED new packet %s\nInserting into %d",packet.payload,B_next_buffer_index);
       B_next_buffer_index = packet.seqnum%BUFFER_SIZE; //= (packet.seqnum/20)%BUFFER_SIZE;
       //B_buffer[B_next_buffer_index] = packet;//buffer packet to detect duplicates
       B_buffer[B_next_buffer_index] = packet;//buffer packet to detect duplicates
@@ -366,8 +383,10 @@ B_input (packet)
         B_curr_seqno++;
       }
     }
-    printf("B %d: ", B_next_buffer_index);
+    if(DEBUG){
+      printf("B %d: ", B_next_buffer_index);
     dumpB();
+    }
     ack_packet.seqnum = packet.seqnum;         
     ack_packet.acknum = B_curr_seqno;
     //memcpy(ack_packet.payload,0,20);
@@ -389,13 +408,13 @@ B_input (packet)
       B_window_base = (B_window_base + next_unacked) % BUFFER_SIZE;
       B_window_end = (B_window_end + next_unacked) % BUFFER_SIZE;
     }
-    printf("acking up until %d\n",B_curr_seqno);
+    if(DEBUG)printf("acking up until %d\n",B_curr_seqno);
     num_acks++;
     tolayer3(B,ack_packet);
 
   }else{
     num_corrupted_recvd++;
-    printf("checksum failed for packet %s\n",packet.payload);
+    if(DEBUG)printf("checksum failed for packet %s\n",packet.payload);
   }
 }
 
@@ -405,7 +424,7 @@ void
 B_init (void)
 {
   
-  printf("B INIT IS BEING CALLED\n");
+  if(DEBUG)printf("B INIT IS BEING CALLED\n");
   B_buffer = (struct pkt*) malloc(BUFFER_SIZE * sizeof(struct pkt));
   B_buffer_acks = (bool*) malloc(BUFFER_SIZE * sizeof(bool)); 
   B_inserted = 0; 
@@ -413,7 +432,7 @@ B_init (void)
   struct pkt dummy;
   dummy.seqnum = -1;
   dummy.acknum = -1;
-  memcpy(dummy.payload,"GiveMeSomething2BRK\n",20);
+  memcpy(dummy.payload,"-------------------\n",20);
   for(i =0; i < BUFFER_SIZE; i++){
    B_buffer[i] = dummy; 
    B_buffer[i].seqnum = i;
@@ -437,13 +456,23 @@ B_init (void)
 /* called at end of simulation to print final statistics */
 void Simulation_done()
 {
-
-  printf("Simulation DONE  IS BEING CALLED\n");
+  double avg_rtt_calc = 0.0;
+  int walk =0;
   printf("----------------------------STATS------------------------------\n");
-  printf("Original packets sent: %d\nNumer of Retransmission: %d\n,Number of Acks: %d\nNumber of corruptions:%d\n",num_original_packets
+  for(int i=0; i < A_next_buffer_index; i++){
+    if(DEBUG)printf("%f | ",A_packet_timers[i]);
+    avg_rtt_calc+= A_packet_timers[i];
+    walk++;
+  }
+  printf("\n");
+  avg_rtt_calc/(double)walk;
+  printf("Original packets sent: %d\nNumer of Retransmission: %d\n,Number of Acks: %d\nNumber of corruptions:%d/%d\nNumberLost: %d\nAVG RTT: %f\n",num_original_packets
   ,num_retransmissions
   ,num_acks
-  ,num_corrupted_recvd);
+  ,num_corrupted_recvd
+  ,total_num_corrupted
+  ,total_lost
+  ,avg_rtt_calc);
   //double* avg_rtt;
 }
 
@@ -784,8 +813,11 @@ struct pkt packet;
  /* simulate losses: */
  if (mrand(1) < lossprob)  {
       nlost++;
-      if (TRACE>0)
+      if (TRACE>0){
+        total_lost++;
         printf("          TOLAYER3: packet being lost\n");
+
+      }
       return;
     }
 
@@ -829,8 +861,10 @@ struct pkt packet;
        mypktptr->seqnum = 999999;
       else
        mypktptr->acknum = 999999;
-    if (TRACE>0)
-        printf("          TOLAYER3: packet being corrupted\n");
+    if (TRACE>0){
+     total_num_corrupted++;   
+      printf("          TOLAYER3: packet being corrupted\n");
+    }
     }
 
   if (TRACE>2)
