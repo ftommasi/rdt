@@ -53,6 +53,7 @@ int num_acks;
 int num_corrupted_recvd;
 int total_num_corrupted = 0;
 int total_lost = 0;
+bool* time_calc;
 double* avg_rtt;
 //
 
@@ -256,7 +257,8 @@ A_input(packet)
   if(DEBUG)printf("updating acked packets up to %d from %d - %d | %d\n",packet.acknum,A_window_base, A_window_end, A_next_buffer_index);
   for(i=A_window_base; i != A_window_end && i < A_next_buffer_index; i = (i+1) % BUFFER_SIZE){
      if(packet.seqnum == A_buffer[i].seqnum){
-      A_packet_timers[i] = time_now - A_packet_timers[i];
+       time_calc[i] = 1;
+       A_packet_timers[i] = time_now - A_packet_timers[i];
      } 
     if(packet.acknum >= A_buffer[i].acknum ){
         if(DEBUG)printf("all packet up to %d are acked\n", packet.acknum);
@@ -287,9 +289,12 @@ A_timerinterrupt (void)
   printf("A TIMERINTERRUPT IS BEING CALLED\n");
   printf("checking what to retransmit (%d - %d)\n",A_window_base,A_window_end+1);
   }
+  /*
   for(i=A_window_base; i != A_window_end && i < A_next_buffer_index; i = (i+1) % BUFFER_SIZE){
+    if(!time_calc[i]){
     A_packet_timers[i] = time_now - A_packet_timers[i];
   }
+  */
   
     //restransmit unacked packet
   for(i=A_window_base; i != (A_window_end) && i < A_next_buffer_index ;  i = (i+1) % BUFFER_SIZE){
@@ -320,6 +325,7 @@ A_init (void)
   A_in_travel_buffer = (struct pkt*) malloc(WINDOW_SIZE * sizeof(struct pkt));
   A_packet_timers = (double*) malloc(BUFFER_SIZE* sizeof(double)); 
   avg_rtt = (double*) malloc(BUFFER_SIZE * sizeof(double));
+  time_calc = (bool*) malloc(BUFFER_SIZE * sizeof(double));  
   int i;
   struct pkt dummy;
   dummy.seqnum = -1;
@@ -329,6 +335,7 @@ A_init (void)
    A_buffer[i] = dummy;
    A_buffer_acks[i] = 0;
    A_packet_timers[i] = 0;
+   time_calc[i] = 0;
   }
 
   A_curr_seqno = FIRST_SEQNO;
@@ -464,7 +471,7 @@ void Simulation_done()
   int walk =0;
   printf("----------------------------STATS------------------------------\n");
   int i;
-  for(i=0; i < A_next_buffer_index; i++){
+  for(i=0; i < num_original_packets; i++){
     if(DEBUG)printf("%f | ",A_packet_timers[i]);
     avg_rtt_calc+= A_packet_timers[i];
     walk++;
