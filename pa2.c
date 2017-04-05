@@ -44,7 +44,7 @@ struct pkt {
 
 //C doesn't support bool so use char for least space
 #define bool char 
-#define BUFFER_SIZE 1050
+#define BUFFER_SIZE 50
 #define DEBUG 1
 //for stats
 int num_original_packets;
@@ -229,7 +229,11 @@ void
 A_input(packet)
   struct pkt packet;
 {
-  if(packet.checksum == calculate_checksum(packet.seqnum,packet.acknum,NULL)){
+  if(DEBUG){
+    printf("ACK PAYLOAD '%s'\n",packet.payload);
+    printf("len: %lu, strcmp('?'):%d\n", strlen(packet.payload),strcmp(packet.payload,"?"));
+  }
+  if(packet.checksum == calculate_checksum(packet.seqnum,packet.acknum,NULL) && strlen(packet.payload) == 0){
   if(DEBUG){
     printf("A_in called\n");
   //slide window
@@ -251,12 +255,12 @@ A_input(packet)
   
   if(DEBUG)printf("updating acked packets up to %d from %d - %d | %d\n",packet.acknum,A_window_base, A_window_end, A_next_buffer_index);
   for(i=A_window_base; i != A_window_end && i < A_next_buffer_index; i = (i+1) % BUFFER_SIZE){
-     if(packet.acknum == A_buffer[i].seqnum){
+     if(packet.seqnum == A_buffer[i].seqnum){
       A_packet_timers[i] = time_now - A_packet_timers[i];
      } 
     if(packet.acknum >= A_buffer[i].acknum ){
         if(DEBUG)printf("all packet up to %d are acked\n", packet.acknum);
-        A_packet_timers[i] = time_now;
+        //A_packet_timers[i] = time_now;
         A_buffer_acks[i] = 1;//has been acked
         //A_next_packet = (A_next_packet + 1) % BUFFER_SIZE;
       }
@@ -283,7 +287,7 @@ A_timerinterrupt (void)
   printf("A TIMERINTERRUPT IS BEING CALLED\n");
   printf("checking what to retransmit (%d - %d)\n",A_window_base,A_window_end+1);
   }
-  for(i=0; i < BUFFER_SIZE; i++){
+  for(i=A_window_base; i != A_window_end && i < A_next_buffer_index; i = (i+1) % BUFFER_SIZE){
     A_packet_timers[i] = time_now - A_packet_timers[i];
   }
   
@@ -414,7 +418,7 @@ B_input (packet)
 
   }else{
     num_corrupted_recvd++;
-    if(DEBUG)printf("checksum failed for packet %s\n",packet.payload);
+    if(DEBUG)printf("checksum failed for corrupt packet %s\n",packet.payload);
   }
 }
 
@@ -459,13 +463,14 @@ void Simulation_done()
   double avg_rtt_calc = 0.0;
   int walk =0;
   printf("----------------------------STATS------------------------------\n");
-  for(int i=0; i < A_next_buffer_index; i++){
+  int i;
+  for(i=0; i < A_next_buffer_index; i++){
     if(DEBUG)printf("%f | ",A_packet_timers[i]);
     avg_rtt_calc+= A_packet_timers[i];
     walk++;
   }
   printf("\n");
-  avg_rtt_calc/(double)walk;
+  avg_rtt_calc= avg_rtt_calc/(double)walk;
   printf("Original packets sent: %d\nNumer of Retransmission: %d\n,Number of Acks: %d\nNumber of corruptions:%d/%d\nNumberLost: %d\nAVG RTT: %f\n",num_original_packets
   ,num_retransmissions
   ,num_acks
