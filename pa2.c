@@ -45,7 +45,7 @@ struct pkt {
 //C doesn't support bool so use char for least space
 #define bool char 
 #define BUFFER_SIZE 1050
-#define DEBUG 1
+#define DEBUG 0
 //for stats
 int num_original_packets;
 int num_retransmissions;
@@ -285,7 +285,7 @@ for(i=0; i < A_next_buffer_index; i = (i+1) % BUFFER_SIZE){
     }
   }else{
     num_corrupted_recvd++;
-    dump_packet(packet);
+    if(DEBUG)dump_packet(packet);
     if(DEBUG)printf("ack packet corrupted\n");
   }
 }
@@ -453,7 +453,7 @@ B_input (packet)
     }
     if(DEBUG)printf("acking up until %d\n",B_curr_seqno);
     num_acks++;
-    dump_packet(ack_packet);
+    if(DEBUG)dump_packet(ack_packet);
     tolayer3(B,ack_packet);
 
   }else{
@@ -509,7 +509,7 @@ void Simulation_done()
     //if(DEBUG){
       if(A_packet_timers[i] < 10*RXMT_TIMEOUT){
     //if(eval_times[i]){  
-      printf("[%d]: %f | ",i,A_packet_timers[i]);
+      if(DEBUG)printf("[%d]: %f | ",i,A_packet_timers[i]);
       avg_rtt_calc+= A_packet_timers[i];
       }
     walk++;

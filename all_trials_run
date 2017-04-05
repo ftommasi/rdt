@@ -1,0 +1,13 @@
+cat TRIAL1 | ./pa2 > OUT_TRIAL1
+cat TRIAL2 | ./pa2 > OUT_TRIAL2
+cat TRIAL3 | ./pa2 > OUT_TRIAL3
+cat TRIAL4 | ./pa2 > OUT_TRIAL4
+cat TRIAL5 | ./pa2 > OUT_TRIAL5
+cat TRIAL6 | ./pa2 > OUT_TRIAL6
+cat TRIAL7 | ./pa2 > OUT_TRIAL7
+cat TRIAL8 | ./pa2 > OUT_TRIAL8
+cat TRIAL9 | ./pa2 > OUT_TRIAL9
+cat TRIAL10 | ./pa2 > OUT_TRIAL10
+cat TRIAL11 | ./pa2 > OUT_TRIAL11
+cat TRIAL12 | ./pa2 > OUT_TRIAL12
+cat TRIAL13 | ./pa2 > OUT_TRIAL13
