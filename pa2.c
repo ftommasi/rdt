@@ -44,7 +44,7 @@ struct pkt {
 
 //C doesn't support bool so use char for least space
 #define bool char 
-#define BUFFER_SIZE 50
+#define BUFFER_SIZE 1050
 #define DEBUG 1
 //for stats
 int num_original_packets;
@@ -231,7 +231,7 @@ A_input(packet)
 {
   if(DEBUG){
     printf("ACK PAYLOAD '%s'\n",packet.payload);
-    printf("len: %lu, strcmp('?'):%d\n", strlen(packet.payload),strcmp(packet.payload,"?"));
+    printf("len: %lu, strcmp('?'): %d, checksum: %d(%d) seq: %d, ack: %d\n", strlen(packet.payload),strcmp(packet.payload,"?"),packet.checksum,calculate_checksum(packet.seqnum,packet.acknum,NULL),packet.seqnum,packet.acknum);
   }
   if(packet.checksum == calculate_checksum(packet.seqnum,packet.acknum,NULL) && strlen(packet.payload) == 0){
   if(DEBUG){
