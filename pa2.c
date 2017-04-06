@@ -304,10 +304,10 @@ A_timerinterrupt (void)
   
 
   //restransmit unacked packet
-  num_retransmissions++;  
   for(i=A_window_base; i != (A_window_end) && i < A_next_buffer_index ;  i = (i+1) % BUFFER_SIZE){
     if(!A_buffer_acks[i]){
       A_packet_timers[i] = time_now;
+      num_retransmissions++;  
       tolayer3(A, A_buffer[i]);
       break;
     }
